@@ -69,6 +69,7 @@ typedef enum
 static IM_Model_t* _getIMInstance(void);
 static void _setParameters(IM_Model_t* model, const double *simInputs);
 static void _setInputs(IM_Model_t* model, const double *simInputs);
+static void _runSimulation(IM_Model_t* pIM, double t, double delt, const double* simInputs, double* simOut);
 
 //////////////////////////////////////////////////////////////////////////////
 //                                                                          //
@@ -78,45 +79,26 @@ static void _setInputs(IM_Model_t* model, const double *simInputs);
 
 //////////////////////////////////////////////////////////////////////////////
 //                                                                          //
-//                            EXPORTED FUNCTIONS (PSIM)                     //
+//                            EXPORTED FUNCTIONS                            //
 //                                                                          //
 //////////////////////////////////////////////////////////////////////////////
 
+// PSIM Calback function
 __declspec(dllexport) void simuser(double t, double delt, double *simInputs, double *simOut);
 
-__declspec(dllexport) void simuser(t, delt, simInputs, simOut)
-	double t, delt;
-	double *simInputs, *simOut;
+__declspec(dllexport) void simuser(double t, double delt, double* simInputs, double* simOut)
 {
-
-    // Induction Machine Model
     IM_Model_t* pIM = _getIMInstance();
-
-    // Only runs the _setup when it's the first simulation cycle
-	if (t <= delt){
-        IM_Init(pIM);
-        _setParameters(pIM, simInputs);
-        IM_TypeModel(pIM,(IMType)simInputs[MODEL]);
-    }
-
-    
-    IM_SimulateStep(pIM);
-    _setInputs(pIM, simInputs);
-
-    // double *privData = (double *)pIM->priv;
-    simOut[IA] = (double)pIM->out.ia;
-    simOut[IB] = (double)pIM->out.ib;
-    simOut[IC] = (double)pIM->out.ic;
-    simOut[WR] = (double)pIM->out.wr;
-    simOut[WMEC] = (double)pIM->out.wmec;
-    simOut[TE]  = (double)pIM->out.Te;
-
-    double* privData = (double*)pIM->priv;
-    simOut[VALPHA] = privData[0];
-    simOut[VBETA]  = privData[1];
-    
+    _runSimulation(pIM, t, delt, simInputs, simOut);
 }
 
+//////////////////////////////////////////////////////////////////////////////
+//                                                                          //
+//                            EXPORTED FUNCTIONS                            //
+//                                                                          //
+//////////////////////////////////////////////////////////////////////////////
+
+// PLECS Calback functions
 DLLEXPORT void plecsSetSizes(struct SimulationSizes* aSizes)
 {
    aSizes->numInputs = TOTAL_INPUTS;
@@ -135,33 +117,13 @@ DLLEXPORT void plecsStart(struct SimulationState* aState)
 //output is written to DLL output port after the output delay
 DLLEXPORT void plecsOutput(struct SimulationState* aState)
 {
-	const double* simInputs = aState->inputs;
-	double* simOut = aState->outputs;
+    const double* simInputs = aState->inputs;
+    double* simOut = aState->outputs;
     double t = aState->time;
     const double DELT = 1e-7;
 
     IM_Model_t* pIM = _getIMInstance();
-
-    // Only runs the _setup when it's the first simulation cycle
-	if (t <= DELT){
-        IM_Init(pIM);
-        _setParameters(pIM, simInputs);
-        IM_TypeModel(pIM,(IMType)simInputs[MODEL]);
-    }
-
-    IM_SimulateStep(pIM);
-    _setInputs(pIM, simInputs);
-
-    simOut[IA] = (double)pIM->out.ia;
-    simOut[IB] = (double)pIM->out.ib;
-    simOut[IC] = (double)pIM->out.ic;
-    simOut[WR] = (double)pIM->out.wr;
-    simOut[WMEC] = (double)pIM->out.wmec;
-    simOut[TE]  = (double)pIM->out.Te;
-
-    double* privData = (double*)pIM->priv;
-    simOut[VALPHA] = privData[0];
-    simOut[VBETA]  = privData[1];
+    _runSimulation(pIM, t, DELT, simInputs, simOut);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -169,10 +131,29 @@ DLLEXPORT void plecsOutput(struct SimulationState* aState)
 //                              LOCAL FUNCTIONS                             //
 //                                                                          //
 //////////////////////////////////////////////////////////////////////////////
-static void _runSimulation()
+static void _runSimulation(IM_Model_t* pIM, double t, double delt, const double* simInputs, double* simOut)
 {
+    if (t <= delt) {
+        IM_Init(pIM);
+        _setParameters(pIM, simInputs);
+        IM_TypeModel(pIM, (IMType)simInputs[MODEL]);
+    }
 
-}	
+    IM_SimulateStep(pIM);
+    _setInputs(pIM, simInputs);
+
+    // Copy outputs to simOut
+    simOut[IA]   = (double)pIM->out.ia;
+    simOut[IB]   = (double)pIM->out.ib;
+    simOut[IC]   = (double)pIM->out.ic;
+    simOut[WR]   = (double)pIM->out.wr;
+    simOut[WMEC] = (double)pIM->out.wmec;
+    simOut[TE]   = (double)pIM->out.Te;
+
+    double* privData = (double*)pIM->priv;
+    simOut[VALPHA] = privData[0];
+    simOut[VBETA]  = privData[1];
+}
 
 static IM_Model_t* _getIMInstance(void)
 {
